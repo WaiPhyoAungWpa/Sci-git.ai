@@ -1,5 +1,6 @@
 from fpdf import FPDF
 import json
+import os
 
 def export_to_report(filename, analysis_dict, branch_name):
     pdf = FPDF()
@@ -19,4 +20,14 @@ def export_to_report(filename, analysis_dict, branch_name):
         pdf.ln(8)
         
     pdf.output(filename)
+    return True
+
+def initialize_project_structure(base_path):
+    """Creates the standard Sci-Git folder hierarchy."""
+    folders = ["data", "exports", "logs"]
+    for folder in folders:
+        path = os.path.join(base_path, folder)
+        if not os.path.exists(path):
+            os.makedirs(path)
+    # The DB will be initialized by DBHandler in the base_path
     return True

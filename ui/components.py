@@ -29,3 +29,15 @@ def draw_loading_overlay(surface, font):
     msg = font.render(">> EXECUTING_ANALYSIS_PROTOCOL...", True, UITheme.ACCENT_ORANGE)
     surface.blit(overlay, (0,0))
     surface.blit(msg, (1280//2 - msg.get_width()//2, 720//2))
+    
+def draw_metadata_panel(surface, experiment_data):
+    """Draws the [i] Information panel on the right."""
+    panel_rect = pygame.Rect(850, 450, 380, 200)
+    pygame.draw.rect(surface, (30, 30, 40), panel_rect)
+    
+    # Content
+    notes = experiment_data.get('notes', 'No notes added...')
+    temp = experiment_data.get('temperature', 'N/A')
+    sid = experiment_data.get('sample_id', 'Unknown')
+    
+    # Rendering logic using your UITheme.render_terminal_text

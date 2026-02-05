@@ -17,6 +17,10 @@ class DBHandler:
             analysis_json TEXT,
             parent_id INTEGER,
             branch_name TEXT,
+            researcher_name TEXT,
+            notes TEXT,
+            temperature TEXT,
+            sample_id TEXT,
             FOREIGN KEY (parent_id) REFERENCES experiments (id)
         )
         """
