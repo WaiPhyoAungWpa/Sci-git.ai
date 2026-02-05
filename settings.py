@@ -3,8 +3,8 @@ import pygame
 class UITheme:
     # Color Palette - Industrial / Terminal Aesthetic
     BG_DARK = (10, 10, 12)
-    BG_LOGIN = (0, 43, 100)
-    PANEL_GREY = (22, 22, 26)
+    BG_LOGIN = (0, 67, 153) 
+    PANEL_GREY = (22, 22, 26, 220)
     ACCENT_ORANGE = (255, 120, 0)
     TEXT_OFF_WHITE = (210, 210, 215)
     TEXT_DIM = (120, 120, 130)
