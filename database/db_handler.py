@@ -72,3 +72,38 @@ class DBHandler:
 
     def close(self):
         self.conn.close()
+
+    def create_tables(self):
+        query = """
+        CREATE TABLE IF NOT EXISTS experiments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME,
+            name TEXT,
+            file_path TEXT UNIQUE,
+            analysis_json TEXT,
+            parent_id INTEGER,
+            branch_name TEXT,
+            notes TEXT,        -- NEW
+            temperature TEXT,  -- NEW
+            sample_id TEXT     -- NEW
+        )
+        """
+        self.conn.execute(query)
+        self.conn.commit()
+
+    def update_metadata(self, exp_id, notes, temp, sample_id):
+        """Saves scientist's manual edits."""
+        query = "UPDATE experiments SET notes=?, temperature=?, sample_id=? WHERE id=?"
+        self.conn.execute(query, (notes, temp, sample_id, exp_id))
+        self.conn.commit()
+        
+    def update_metadata(self, exp_id, notes, temp, sample_id):
+        """Saves scientist's manual edits to the database."""
+        query = """
+        UPDATE experiments 
+        SET notes = ?, temperature = ?, sample_id = ? 
+        WHERE id = ?
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(query, (notes, temp, sample_id, exp_id))
+        self.conn.commit()
