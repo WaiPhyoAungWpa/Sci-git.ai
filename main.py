@@ -42,9 +42,11 @@ try:
     logo_img.set_colorkey(logo_img.get_at((0,0)))
 except: logo_img = None
 
+# --- STATES ---
 STATE_SPLASH = "SPLASH"
 STATE_DASHBOARD = "DASHBOARD"
 STATE_ONBOARDING = "ONBOARDING"
+STATE_EDITOR = "EDITOR" # NEW: Spreadsheet Editor State
 current_state = STATE_SPLASH
 
 db = None 
@@ -62,13 +64,12 @@ SCREEN_CENTER_X = 1280 // 2
 BTN_WIDTH = 280
 BTN_X = SCREEN_CENTER_X - (BTN_WIDTH // 2)
 
-# SPLASH BTNS
+# BUTTONS
 btn_new = Button(BTN_X, 420, BTN_WIDTH, 45, "CREATE NEW PROJECT", UITheme.ACCENT_ORANGE)
 btn_load = Button(BTN_X, 480, BTN_WIDTH, 45, "CONTINUE PROJECT", UITheme.ACCENT_ORANGE)
 btn_import = Button(BTN_X, 540, BTN_WIDTH, 45, "UPLOAD PROJECT", UITheme.ACCENT_ORANGE)
 btn_confirm = Button(BTN_X, 520, BTN_WIDTH, 45, "ENTER LABORATORY", (0, 180, 100))
 
-# DASHBOARD BTNS
 btn_export = Button(850, 640, 180, 40, "GENERATE REPORT", UITheme.ACCENT_ORANGE)
 btn_branch = Button(1050, 640, 180, 40, "NEW BRANCH", UITheme.NODE_BRANCH)
 btn_snapshot_export = Button(1100, 5, 160, 25, "EXPORT PROJECT", (50, 50, 60))
@@ -83,8 +84,12 @@ btn_onboard_upload = Button(SCREEN_CENTER_X - 150, 450, 300, 50, "UPLOAD FIRST E
 
 # MENU BAR BTNS
 btn_menu_file = Button(20, 45, 60, 20, "FILE", UITheme.PANEL_GREY)
-btn_menu_edit = Button(90, 45, 60, 20, "EDIT", UITheme.PANEL_GREY)
-btn_menu_analyze = Button(160, 45, 80, 20, "ANALYZE", UITheme.PANEL_GREY)
+btn_menu_edit = Button(90, 45, 100, 20, "EDIT FILE", UITheme.PANEL_GREY)
+btn_menu_analyze = Button(200, 45, 80, 20, "ANALYZE", UITheme.PANEL_GREY)
+
+# EDITOR BTNS
+btn_editor_save = Button(1050, 650, 200, 40, "SAVE CHANGES", (0, 180, 100))
+btn_editor_exit = Button(20, 650, 150, 40, "CANCEL", (200, 50, 50))
 
 researcher_name = ""
 show_login_box = False
@@ -97,6 +102,13 @@ meta_input_notes = ""
 meta_input_temp = ""
 meta_input_sid = ""
 active_field = "notes"
+
+# --- EDITOR VARS ---
+editor_df = None
+editor_file_path = None
+editor_scroll_y = 0
+editor_selected_cell = None # (row_idx, col_idx)
+editor_input_buffer = ""
 
 def init_project(path):
     for folder in ["data", "exports", "logs"]: os.makedirs(os.path.join(path, folder), exist_ok=True)
@@ -121,20 +133,14 @@ def export_project_worker(project_path):
     finally: state.is_processing = False
 
 def analyze_branch_worker():
-    """Fetches full branch history and asks AI for a Change Log."""
     try:
         state.is_processing = True
         state.status_msg = "GENERATING BRANCH EVOLUTION REPORT..."
-        # Get all nodes in active branch
         tree = db.get_tree_data()
-        # Filter logic (simplified: get all nodes matching active branch name)
-        # Note: In a real graph, we'd traverse parents. Here we grab by branch tag.
         branch_nodes = [row for row in tree if row[2] == state.active_branch]
-        
         history_text = ""
-        for row in branch_nodes[-5:]: # Last 5 commits to save tokens
+        for row in branch_nodes[-5:]:
             history_text += f"ID: {row[0]} | Name: {row[3]}\n"
-        
         report = ai_engine.analyze_branch_history(history_text)
         state.current_analysis = {"summary": f"BRANCH REPORT ({state.active_branch}):\n{report}", "anomalies": []}
         state.status_msg = "BRANCH ANALYSIS COMPLETE."
@@ -169,22 +175,15 @@ def process_new_file_worker(file_path, parent_id, branch):
 def load_experiment_worker(exp_ids, custom_x=None, custom_y=None, save_settings=False):
     try:
         state.is_processing = True
-        
         if len(exp_ids) == 1:
             raw = db.get_experiment_by_id(exp_ids[0])
             if raw:
-                # raw structure: 0:id ... 11:plot_settings (if migration worked)
+                # Load settings logic
                 saved_settings = None
-                if len(raw) > 11 and raw[11]:
-                    saved_settings = json.loads(raw[11])
-                
-                # Determine axes: Custom Override > Saved DB Settings > Auto
+                if len(raw) > 11 and raw[11]: saved_settings = json.loads(raw[11])
                 final_x = custom_x if custom_x else (saved_settings.get("x") if saved_settings else None)
                 final_y = custom_y if custom_y else (saved_settings.get("y") if saved_settings else None)
-
-                # Save if explicit change (Gear Icon)
-                if save_settings and final_x and final_y:
-                    db.update_plot_settings(exp_ids[0], final_x, final_y)
+                if save_settings and final_x and final_y: db.update_plot_settings(exp_ids[0], final_x, final_y)
 
                 state.current_analysis = json.loads(raw[4])
                 df = pd.read_csv(raw[3])
@@ -192,8 +191,6 @@ def load_experiment_worker(exp_ids, custom_x=None, custom_y=None, save_settings=
                 state.status_msg = f"LOADED: {raw[2]}"
                 
                 global meta_input_notes, meta_input_temp, meta_input_sid
-                # Index from end to be safe against schema changes
-                # notes=-4, temp=-3, sid=-2, settings=-1
                 meta_input_notes = raw[-4] if raw[-4] else ""
                 meta_input_temp = raw[-3] if raw[-3] else ""
                 meta_input_sid = raw[-2] if raw[-2] else ""
@@ -218,7 +215,6 @@ def load_experiment_worker(exp_ids, custom_x=None, custom_y=None, save_settings=
                     comparison_result = ai_engine.compare_experiments(df1, df2)
                     state.current_analysis = comparison_result
                     state.status_msg = "COMPARATIVE ANALYSIS COMPLETE"
-
     except Exception as e: state.status_msg = f"FAILED TO LOAD: {e}"
     finally: state.is_processing = False
 
@@ -235,6 +231,17 @@ def perform_conversion_worker(file_path, column, to_unit, ids_to_reload):
         state.is_processing = False
         state.show_conversion_dialog = False
 
+def save_editor_changes():
+    """Saves the modified DF from Editor to CSV."""
+    global editor_df, editor_file_path
+    try:
+        editor_df.to_csv(editor_file_path, index=False)
+        state.status_msg = "FILE UPDATED SUCCESSFULLY."
+        # Reload to update graph
+        threading.Thread(target=load_experiment_worker, args=(state.selected_ids,), daemon=True).start()
+    except Exception as e:
+        state.status_msg = f"SAVE FAILED: {e}"
+
 # --- MAIN LOOP ---
 running = True
 while running:
@@ -246,32 +253,136 @@ while running:
     for event in events:
         if event.type == pygame.QUIT: running = False
         
+        # --- EDITOR KEYBOARD INPUT ---
+        if current_state == STATE_EDITOR and event.type == pygame.KEYDOWN:
+            if editor_selected_cell:
+                if event.key == pygame.K_RETURN:
+                    # Commit change
+                    r, c = editor_selected_cell
+                    try:
+                        # Auto-detect type (float vs string)
+                        val = float(editor_input_buffer)
+                        editor_df.iloc[r, c] = val
+                    except ValueError:
+                        editor_df.iloc[r, c] = editor_input_buffer
+                    editor_selected_cell = None
+                elif event.key == pygame.K_BACKSPACE:
+                    editor_input_buffer = editor_input_buffer[:-1]
+                else:
+                    editor_input_buffer += event.unicode
+            elif event.key == pygame.K_DOWN: editor_scroll_y = max(0, editor_scroll_y - 1)
+            elif event.key == pygame.K_UP: editor_scroll_y += 1
+
+        # --- MOUSE INPUT ---
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if state.show_axis_selector:
-                if not axis_selector_rect.collidepoint(mouse_pos) and not btn_axis_gear.check_hover(mouse_pos):
-                    state.show_axis_selector = False
-                elif axis_selector_rect.collidepoint(mouse_pos) and state.plot_context:
-                    df_ref = state.plot_context['df']
-                    numeric_cols = df_ref.select_dtypes(include=['number']).columns
-                    local_y = mouse_pos[1] - 160
-                    idx = local_y // 25
-                    if 0 <= idx < len(numeric_cols):
-                        col_name = numeric_cols[idx]
-                        if 850 <= mouse_pos[0] < 950: # X
-                            threading.Thread(target=load_experiment_worker, args=(state.selected_ids, col_name, state.plot_context.get('y_col'), True), daemon=True).start()
-                        else: # Y
-                            threading.Thread(target=load_experiment_worker, args=(state.selected_ids, state.plot_context.get('x_col'), col_name, True), daemon=True).start()
+            if current_state == STATE_EDITOR:
+                if btn_editor_save.check_hover(mouse_pos):
+                    save_editor_changes()
+                    current_state = STATE_DASHBOARD
+                elif btn_editor_exit.check_hover(mouse_pos):
+                    current_state = STATE_DASHBOARD
+                
+                # GRID CLICK LOGIC
+                # Header height = 60, Row height = 30, Col width = 100
+                grid_y_start = 100
+                x_scroll = 50
+                
+                # Check if click is in grid area
+                if 50 < mouse_pos[0] < 1230 and 100 < mouse_pos[1] < 600:
+                    rel_y = mouse_pos[1] - grid_y_start
+                    row_idx = (rel_y // 30) + int(editor_scroll_y)
+                    col_idx = (mouse_pos[0] - x_scroll) // 100
+                    
+                    if 0 <= row_idx < len(editor_df) and 0 <= col_idx < len(editor_df.columns):
+                        editor_selected_cell = (row_idx, col_idx)
+                        editor_input_buffer = str(editor_df.iloc[row_idx, col_idx])
+                    else:
+                        editor_selected_cell = None
 
-            if state.show_conversion_dialog:
-                if btn_conv_yes.check_hover(mouse_pos):
-                    file_path, col, unit = state.pending_conversion
-                    threading.Thread(target=perform_conversion_worker, args=(file_path, col, unit, state.selected_ids), daemon=True).start()
-                elif btn_conv_no.check_hover(mouse_pos):
-                    state.show_conversion_dialog = False
-                    state.status_msg = "CONVERSION CANCELLED."
-                continue 
+            # DASHBOARD LOGIC
+            elif current_state == STATE_DASHBOARD:
+                if state.show_axis_selector:
+                    if not axis_selector_rect.collidepoint(mouse_pos) and not btn_axis_gear.check_hover(mouse_pos):
+                        state.show_axis_selector = False
+                    elif axis_selector_rect.collidepoint(mouse_pos) and state.plot_context:
+                        # ... Axis Selection Logic ... (Same as before)
+                        df_ref = state.plot_context['df']
+                        numeric_cols = df_ref.select_dtypes(include=['number']).columns
+                        local_y = mouse_pos[1] - 160
+                        idx = local_y // 25
+                        if 0 <= idx < len(numeric_cols):
+                            col_name = numeric_cols[idx]
+                            if 850 <= mouse_pos[0] < 950: 
+                                threading.Thread(target=load_experiment_worker, args=(state.selected_ids, col_name, state.plot_context.get('y_col'), True), daemon=True).start()
+                            else:
+                                threading.Thread(target=load_experiment_worker, args=(state.selected_ids, state.plot_context.get('x_col'), col_name, True), daemon=True).start()
 
-            if current_state == STATE_SPLASH:
+                elif state.show_conversion_dialog:
+                    if btn_conv_yes.check_hover(mouse_pos):
+                        file_path, col, unit = state.pending_conversion
+                        threading.Thread(target=perform_conversion_worker, args=(file_path, col, unit, state.selected_ids), daemon=True).start()
+                    elif btn_conv_no.check_hover(mouse_pos):
+                        state.show_conversion_dialog = False
+
+                else:
+                    # MENU ACTIONS
+                    if btn_menu_analyze.check_hover(mouse_pos):
+                        threading.Thread(target=analyze_branch_worker, daemon=True).start()
+                    
+                    if btn_menu_edit.check_hover(mouse_pos):
+                        if len(state.selected_ids) == 1:
+                            # START EDITOR
+                            raw = db.get_experiment_by_id(state.selected_ids[0])
+                            editor_file_path = raw[3]
+                            editor_df = pd.read_csv(editor_file_path)
+                            current_state = STATE_EDITOR
+                            editor_selected_cell = None
+                            state.status_msg = "EDITING MODE ACTIVE"
+                        else:
+                            state.status_msg = "SELECT 1 NODE TO EDIT"
+
+                    if btn_menu_file.check_hover(mouse_pos):
+                        # Simple File Menu: Just Export for now
+                        threading.Thread(target=export_project_worker, args=(selected_project_path,), daemon=True).start()
+
+                    # Standard Buttons
+                    if btn_axis_gear.check_hover(mouse_pos): state.show_axis_selector = not state.show_axis_selector
+                    
+                    if len(state.selected_ids) == 1 and btn_add_manual.check_hover(mouse_pos):
+                        path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
+                        if path: threading.Thread(target=process_new_file_worker, args=(path, state.selected_ids[0], state.active_branch), daemon=True).start()
+                    
+                    elif len(state.selected_ids) == 1 and btn_edit_meta.check_hover(mouse_pos): is_editing_metadata = not is_editing_metadata
+                    
+                    elif is_editing_metadata and btn_save_meta.check_hover(mouse_pos):
+                        db.update_metadata(state.selected_ids[0], meta_input_notes, meta_input_temp, meta_input_sid)
+                        is_editing_metadata = False
+                        threading.Thread(target=load_experiment_worker, args=(state.selected_ids,), daemon=True).start()
+                    
+                    elif btn_snapshot_export.check_hover(mouse_pos):
+                        threading.Thread(target=export_project_worker, args=(selected_project_path,), daemon=True).start()
+                    elif btn_branch.check_hover(mouse_pos):
+                        new_branch = simpledialog.askstring("New Branch", "Name:")
+                        if new_branch:
+                            state.active_branch = new_branch
+                            state.status_msg = f"BRANCH: {new_branch}"
+                    elif btn_export.check_hover(mouse_pos):
+                        if state.current_analysis:
+                            path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
+                            if path:
+                                try:
+                                    temp_img = "temp_plot_export.png"
+                                    if state.current_plot: pygame.image.save(state.current_plot, temp_img)
+                                    export_to_report(path, state.current_analysis, state.active_branch, temp_img)
+                                    if os.path.exists(temp_img): os.remove(temp_img)
+                                    state.status_msg = "REPORT GENERATED."
+                                except Exception as e: state.status_msg = f"ERROR: {e}"
+                    else:
+                        selected_list = tree_ui.handle_click(event.pos, (20, 80, 800, 600))
+                        if selected_list: threading.Thread(target=load_experiment_worker, args=(selected_list,), daemon=True).start()
+
+            # SPLASH / ONBOARDING CLICKS
+            elif current_state == STATE_SPLASH:
                 if not show_login_box:
                     if btn_new.check_hover(mouse_pos):
                         path = filedialog.askdirectory()
@@ -311,53 +422,7 @@ while running:
                         current_state = STATE_DASHBOARD
                 elif btn_skip_onboarding.check_hover(mouse_pos): current_state = STATE_DASHBOARD
 
-            elif current_state == STATE_DASHBOARD:
-                # MENU ACTIONS
-                if btn_menu_analyze.check_hover(mouse_pos):
-                    threading.Thread(target=analyze_branch_worker, daemon=True).start()
-                
-                # SEARCH BAR CLICK
-                search_rect = pygame.Rect(850, 45, 200, 25)
-                if search_rect.collidepoint(mouse_pos): search_active = True
-                else: search_active = False
-
-                if btn_axis_gear.check_hover(mouse_pos): state.show_axis_selector = not state.show_axis_selector
-
-                if len(state.selected_ids) == 1 and btn_add_manual.check_hover(mouse_pos):
-                    path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
-                    if path: threading.Thread(target=process_new_file_worker, args=(path, state.selected_ids[0], state.active_branch), daemon=True).start()
-                
-                elif len(state.selected_ids) == 1 and btn_edit_meta.check_hover(mouse_pos): is_editing_metadata = not is_editing_metadata
-                
-                elif is_editing_metadata and btn_save_meta.check_hover(mouse_pos):
-                    db.update_metadata(state.selected_ids[0], meta_input_notes, meta_input_temp, meta_input_sid)
-                    is_editing_metadata = False
-                    threading.Thread(target=load_experiment_worker, args=(state.selected_ids,), daemon=True).start()
-                
-                elif btn_snapshot_export.check_hover(mouse_pos):
-                    threading.Thread(target=export_project_worker, args=(selected_project_path,), daemon=True).start()
-                elif btn_branch.check_hover(mouse_pos):
-                    new_branch = simpledialog.askstring("New Branch", "Name:")
-                    if new_branch:
-                        state.active_branch = new_branch
-                        state.status_msg = f"BRANCH: {new_branch}"
-                elif btn_export.check_hover(mouse_pos):
-                    if state.current_analysis:
-                        path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
-                        if path:
-                            try:
-                                # Save current plot to temp file
-                                temp_img = "temp_plot_export.png"
-                                if state.current_plot:
-                                    pygame.image.save(state.current_plot, temp_img)
-                                export_to_report(path, state.current_analysis, state.active_branch, temp_img)
-                                if os.path.exists(temp_img): os.remove(temp_img)
-                                state.status_msg = "REPORT GENERATED."
-                            except Exception as e: state.status_msg = f"ERROR: {e}"
-                else:
-                    selected_list = tree_ui.handle_click(event.pos, (20, 80, 800, 600))
-                    if selected_list: threading.Thread(target=load_experiment_worker, args=(selected_list,), daemon=True).start()
-
+        # --- KEYBOARD (Global) ---
         if event.type == pygame.KEYDOWN:
             if current_state == STATE_SPLASH and show_login_box:
                 if event.key == pygame.K_BACKSPACE: researcher_name = researcher_name[:-1]
@@ -365,7 +430,7 @@ while running:
             elif search_active:
                 if event.key == pygame.K_BACKSPACE: search_text = search_text[:-1]
                 else: search_text += event.unicode
-                tree_ui.search_filter = search_text # Update Tree Filter
+                tree_ui.search_filter = search_text
             elif is_editing_metadata:
                 if event.key == pygame.K_BACKSPACE:
                     if active_field == "notes": meta_input_notes = meta_input_notes[:-1]
@@ -418,6 +483,68 @@ while running:
         btn_skip_onboarding.check_hover(mouse_pos)
         btn_skip_onboarding.draw(screen, font_main)
 
+    elif current_state == STATE_EDITOR:
+        screen.fill((10, 10, 12))
+        UITheme.draw_grid(screen)
+        
+        # Header
+        pygame.draw.rect(screen, UITheme.PANEL_GREY, (0, 0, 1280, 60))
+        screen.blit(font_bold.render(f"EDITING: {os.path.basename(editor_file_path)}", True, UITheme.ACCENT_ORANGE), (20, 20))
+        screen.blit(font_main.render("Use Arrow Keys to Scroll | Enter to Confirm Cell | Save to Commit", True, UITheme.TEXT_DIM), (500, 22))
+
+        # DRAW SPREADSHEET
+        start_x = 50
+        start_y = 100
+        cell_w = 100
+        cell_h = 30
+        
+        # Draw Columns
+        cols = editor_df.columns
+        for c_idx, col_name in enumerate(cols):
+            cx = start_x + (c_idx * cell_w)
+            if cx > 1200: break
+            pygame.draw.rect(screen, (40, 40, 50), (cx, start_y - 30, cell_w, 30))
+            pygame.draw.rect(screen, (80, 80, 80), (cx, start_y - 30, cell_w, 30), 1)
+            screen.blit(font_small.render(col_name[:12], True, (255, 255, 255)), (cx + 5, start_y - 25))
+
+        # Draw Rows
+        row_limit = 15 # Visible rows
+        visible_df = editor_df.iloc[int(editor_scroll_y):int(editor_scroll_y)+row_limit]
+        
+        for r_idx, (idx, row) in enumerate(visible_df.iterrows()):
+            actual_row_idx = int(editor_scroll_y) + r_idx
+            ry = start_y + (r_idx * cell_h)
+            
+            # Row Number
+            screen.blit(font_small.render(str(actual_row_idx), True, UITheme.TEXT_DIM), (10, ry + 8))
+            
+            for c_idx, val in enumerate(row):
+                cx = start_x + (c_idx * cell_w)
+                if cx > 1200: break
+                
+                rect = pygame.Rect(cx, ry, cell_w, cell_h)
+                
+                # Check Selection
+                is_selected = editor_selected_cell == (actual_row_idx, c_idx)
+                
+                bg_col = (20, 20, 25)
+                if is_selected: bg_col = (0, 60, 100)
+                
+                pygame.draw.rect(screen, bg_col, rect)
+                pygame.draw.rect(screen, (50, 50, 60), rect, 1)
+                
+                # Render Value
+                display_val = editor_input_buffer if is_selected else str(val)
+                screen.blit(font_main.render(display_val[:12], True, (255, 255, 255)), (cx + 5, ry + 5))
+                
+                if is_selected:
+                    pygame.draw.rect(screen, UITheme.ACCENT_ORANGE, rect, 2)
+
+        btn_editor_save.check_hover(mouse_pos)
+        btn_editor_save.draw(screen, font_bold)
+        btn_editor_exit.check_hover(mouse_pos)
+        btn_editor_exit.draw(screen, font_bold)
+
     elif current_state == STATE_DASHBOARD:
         if not event_queue.empty() and not state.is_processing:
             ev = event_queue.get()
@@ -431,7 +558,7 @@ while running:
         UITheme.draw_grid(screen)
         
         # HEADER
-        pygame.draw.rect(screen, UITheme.PANEL_GREY, (0, 0, 1280, 70)) # Taller header for menu
+        pygame.draw.rect(screen, UITheme.PANEL_GREY, (0, 0, 1280, 70))
         pygame.draw.line(screen, UITheme.ACCENT_ORANGE, (0, 70), (1280, 70), 2)
         screen.blit(font_bold.render(f"SCI-GIT // {os.path.basename(selected_project_path).upper()} // {researcher_name.upper()}", True, UITheme.ACCENT_ORANGE), (20, 10))
         
@@ -458,6 +585,7 @@ while running:
         screen.blit(tree_surf, (20, 80))
         UITheme.draw_bracket(screen, (20, 80, 800, 600), UITheme.ACCENT_ORANGE)
 
+        # Context Icons
         if len(state.selected_ids) == 1:
             for node in tree_ui.nodes:
                 if node["id"] == state.selected_ids[0]:
