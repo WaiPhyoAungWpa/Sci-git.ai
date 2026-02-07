@@ -1,5 +1,6 @@
 import pygame
 from settings import UITheme
+from state_manager import state  # Need state to access selected_ids
 
 class VersionTree:
     def __init__(self):
@@ -12,7 +13,6 @@ class VersionTree:
         self.zoom_level = 1.0
         self.is_panning = False
         
-        self.selected_node_id = None
         self.font = pygame.font.SysFont("Consolas", 12, bold=True)
 
     def handle_zoom(self, direction):
@@ -58,20 +58,15 @@ class VersionTree:
                 parent_pos = pos_map[parent_id]['pos']
                 self.connections.append((parent_pos, pos))
 
-        # --- AUTO-SCROLL LOGIC ---
         if self.nodes:
-            # Find the node with the furthest X (the latest generation)
             max_x = max(n['pos'].x for n in self.nodes)
-            # Calculate where that node is with current zoom
             scaled_max_x = max_x * self.zoom_level
-            # Set camera so the newest node is roughly 70% across the 800px panel
-            # (600 is the focal point inside the 800px panel)
             self.camera_offset.x = 600 - scaled_max_x
 
     def draw(self, surface, mouse_pos):
         surface.fill((0, 0, 0, 0))
 
-        # 1. Draw Connections (Scale by zoom)
+        # 1. Draw Connections
         for start, end in self.connections:
             s = (start * self.zoom_level) + self.camera_offset
             e = (end * self.zoom_level) + self.camera_offset
@@ -87,27 +82,29 @@ class VersionTree:
             ]
             pygame.draw.lines(surface, color, False, pts, 2)
 
-        # 2. Draw Nodes (Scale by zoom)
+        # 2. Draw Nodes
         current_radius = int(self.node_radius * self.zoom_level)
         
         for node in self.nodes:
             draw_pos = (node["pos"] * self.zoom_level) + self.camera_offset
             ix, iy = int(draw_pos.x), int(draw_pos.y)
             
-            # Optimization: Don't draw if off-screen
             if not (-100 < ix < 900): continue
 
             base_color = UITheme.NODE_MAIN if node["branch"] == "main" else UITheme.NODE_BRANCH
             
-            # Selection Highlight
-            if node["id"] == self.selected_node_id:
-                pygame.draw.circle(surface, UITheme.ACCENT_ORANGE, (ix, iy), current_radius + 4, 2)
+            # --- SELECTION HIGHLIGHT LOGIC ---
+            # Primary = Orange, Secondary = Cyan
+            if node["id"] in state.selected_ids:
+                idx = state.selected_ids.index(node["id"])
+                # 0 = Primary (Orange), 1 = Secondary (Cyan)
+                hl_color = UITheme.ACCENT_ORANGE if idx == 0 else (0, 255, 255)
+                pygame.draw.circle(surface, hl_color, (ix, iy), current_radius + 4, 3)
 
             # Node Body
             pygame.draw.circle(surface, UITheme.PANEL_GREY, (ix, iy), current_radius)
             pygame.draw.circle(surface, base_color, (ix, iy), current_radius, 2)
             
-            # Only draw text if zoom is large enough to read it
             if self.zoom_level > 0.6:
                 id_txt = self.font.render(str(node["id"]), True, UITheme.TEXT_OFF_WHITE)
                 surface.blit(id_txt, id_txt.get_rect(center=(ix, iy)))
@@ -116,18 +113,36 @@ class VersionTree:
                 surface.blit(name_txt, (ix - 30, iy + current_radius + 5))
 
     def handle_click(self, mouse_pos, panel_rect):
-        """Accounts for zoom and camera when clicking nodes."""
-        # Convert global mouse to local panel coords
+        """Dual-Node Selection Logic with Ctrl support."""
         local_x = mouse_pos[0] - panel_rect[0]
         local_y = mouse_pos[1] - panel_rect[1]
         local_mouse = pygame.Vector2(local_x, local_y)
         
         current_radius = self.node_radius * self.zoom_level
 
+        clicked_node = None
         for node in self.nodes:
-            # Important: Use the same math used in draw()
             draw_pos = (node["pos"] * self.zoom_level) + self.camera_offset
             if draw_pos.distance_to(local_mouse) < current_radius + 5:
-                self.selected_node_id = node["id"]
-                return node["id"]
+                clicked_node = node["id"]
+                break
+        
+        if clicked_node:
+            # Check for CTRL key
+            keys = pygame.key.get_pressed()
+            is_ctrl = keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]
+
+            if is_ctrl:
+                if clicked_node in state.selected_ids:
+                    state.selected_ids.remove(clicked_node) # Toggle off
+                else:
+                    if len(state.selected_ids) < 2:
+                        state.selected_ids.append(clicked_node) # Add second
+                    else:
+                        state.selected_ids = [clicked_node] # Reset on 3rd click
+            else:
+                # Standard click resets to single selection
+                state.selected_ids = [clicked_node]
+
+            return state.selected_ids
         return None

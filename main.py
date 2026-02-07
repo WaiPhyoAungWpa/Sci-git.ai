@@ -9,7 +9,6 @@ from queue import Queue
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 
-# Internal Modules
 from settings import UITheme
 from state_manager import state
 from database.db_handler import DBHandler
@@ -17,7 +16,7 @@ from ui.elements import VersionTree
 from ui.components import Button, draw_loading_overlay
 from core.watcher import start_watcher
 from engine.ai import ScienceAI
-from engine.analytics import create_seaborn_surface
+from engine.analytics import create_seaborn_surface, HeaderScanner # IMPORTED SCANNER
 from core.processor import export_to_report
 
 # --- INIT ---
@@ -74,6 +73,10 @@ btn_add_manual = Button(0, 0, 32, 32, "+", UITheme.ACCENT_ORANGE)
 btn_edit_meta = Button(0, 0, 32, 32, "i", UITheme.NODE_MAIN)
 btn_save_meta = Button(855, 500, 390, 40, "SAVE TO SNAPSHOT", (0, 150, 255))
 
+# Conversion Dialog Buttons
+btn_conv_yes = Button(500, 400, 100, 40, "YES", (0, 180, 100))
+btn_conv_no = Button(680, 400, 100, 40, "NO", (200, 50, 50))
+
 btn_skip_onboarding = Button(1150, 20, 100, 35, "SKIP >>", UITheme.TEXT_DIM)
 btn_onboard_upload = Button(SCREEN_CENTER_X - 150, 450, 300, 50, "UPLOAD FIRST EXPERIMENT", UITheme.ACCENT_ORANGE)
 
@@ -91,31 +94,23 @@ meta_input_sid = ""
 active_field = "notes"
 
 def init_project(path):
-    """Safety: Only creates folders if they don't exist."""
     for folder in ["data", "exports", "logs"]:
         os.makedirs(os.path.join(path, folder), exist_ok=True)
 
 def load_database_safe(path):
-    """SAFE DB SWAPPING: Closes old connection before opening new one."""
     global db
     if db:
-        try:
-            db.close()
-        except:
-            pass
+        try: db.close()
+        except: pass
     db = DBHandler(path)
 
 def export_project_worker(project_path):
-    """Zips the DB and Data folder for sharing."""
     try:
         state.is_processing = True
         state.status_msg = "COMPRESSING PROJECT SNAPSHOT..."
-        # Create a timestamped zip
         ts = pd.Timestamp.now().strftime("%Y%m%d_%H%M")
         zip_name = f"SciGit_Export_{ts}"
         output_path = os.path.join(project_path, "exports", zip_name) 
-        
-        # Zip the whole project folder
         shutil.make_archive(output_path, 'zip', project_path)
         state.status_msg = f"EXPORT COMPLETE: {zip_name}.zip"
     except Exception as e:
@@ -131,19 +126,17 @@ def process_new_file_worker(file_path, parent_id, branch):
         state.is_processing = True
         state.status_msg = f"ANALYZING: {os.path.basename(file_path)}..."
         
-        # Check database directly to see if it's a known file
         existing_id = db.get_id_by_path(file_path)
         if existing_id:
-            # If it's already there, just select it instead of adding it
-            state.selected_id = existing_id
-            load_experiment_worker(existing_id) # Re-use existing loading logic
+            state.selected_ids = [existing_id] # Update to List
+            load_experiment_worker([existing_id])
             state.status_msg = "FILE ALREADY TRACKED. SELECTING SNAPSHOT."
         else:
             analysis_data = ai_engine.analyze_csv_data(file_path)
             new_id = db.add_experiment(os.path.basename(file_path), file_path, analysis_data.model_dump(), parent_id, branch)
             if new_id:
                 state.head_id = new_id
-                state.selected_id = new_id
+                state.selected_ids = [new_id] # Update to List
                 state.current_analysis = analysis_data.model_dump()
                 df = pd.read_csv(file_path)
                 state.current_plot = create_seaborn_surface(df)
@@ -155,30 +148,75 @@ def process_new_file_worker(file_path, parent_id, branch):
         state.is_processing = False
         state.needs_tree_update = True 
 
-def load_experiment_worker(exp_id):
+def perform_conversion_worker(file_path, column, to_unit, ids_to_reload):
+    """Updates CSV file with converted units."""
     try:
         state.is_processing = True
-        raw = db.get_experiment_by_id(exp_id)
-        if raw:
-            # Load basic data
-            state.current_analysis = json.loads(raw[4])
-            df = pd.read_csv(raw[3])
-            state.current_plot = create_seaborn_surface(df)
-            state.status_msg = f"LOADED: {raw[2]}"
-            
-            # Load metadata into buffers safely
-            global meta_input_notes, meta_input_temp, meta_input_sid
-            # Check indices based on your schema. 
-            # Assuming: 0:id, ... 7:notes, 8:temp, 9:sid OR 8:notes, 9:temp, 10:sid depending on schema version.
-            # We use negative indexing for safety if schema grew.
-            # Assuming DBHandler.create_tables schema:
-            # notes, temperature, sample_id are the last 3 columns.
-            meta_input_notes = raw[-3] if raw[-3] else ""
-            meta_input_temp = raw[-2] if raw[-2] else ""
-            meta_input_sid = raw[-1] if raw[-1] else ""
-            
+        df = pd.read_csv(file_path)
+        df = HeaderScanner.convert_column(df, column, to_unit)
+        df.to_csv(file_path, index=False)
+        state.status_msg = f"CONVERSION COMPLETE. RELOADING..."
+        # Reload the view
+        load_experiment_worker(ids_to_reload)
     except Exception as e:
-        state.status_msg = "FAILED TO LOAD DATA."
+        state.status_msg = f"CONVERSION ERROR: {e}"
+    finally:
+        state.is_processing = False
+        state.show_conversion_dialog = False
+
+def load_experiment_worker(exp_ids):
+    """Loads 1 or 2 experiments for comparison."""
+    try:
+        state.is_processing = True
+        
+        if len(exp_ids) == 1:
+            # --- SINGLE MODE ---
+            raw = db.get_experiment_by_id(exp_ids[0])
+            if raw:
+                state.current_analysis = json.loads(raw[4])
+                df = pd.read_csv(raw[3])
+                state.current_plot = create_seaborn_surface(df)
+                state.status_msg = f"LOADED: {raw[2]}"
+                
+                # Load metadata
+                global meta_input_notes, meta_input_temp, meta_input_sid
+                meta_input_notes = raw[-3] if raw[-3] else ""
+                meta_input_temp = raw[-2] if raw[-2] else ""
+                meta_input_sid = raw[-1] if raw[-1] else ""
+
+        elif len(exp_ids) == 2:
+            # --- DUAL MODE ---
+            raw1 = db.get_experiment_by_id(exp_ids[0])
+            raw2 = db.get_experiment_by_id(exp_ids[1])
+            
+            if raw1 and raw2:
+                df1 = pd.read_csv(raw1[3])
+                df2 = pd.read_csv(raw2[3])
+                
+                # UNIT CHECK LOGIC
+                u1, col1 = HeaderScanner.detect_temp_unit(df1)
+                u2, col2 = HeaderScanner.detect_temp_unit(df2)
+                
+                if u1 and u2 and u1 != u2:
+                    # Mismatch Detected! Prompt user to convert the SECONDARY (df2) to PRIMARY (df1) unit
+                    state.pending_conversion = (raw2[3], col2, u1) # File, Col, TargetUnit
+                    state.show_conversion_dialog = True
+                    # Temporarily load side-by-side mismatch until user decides
+                    state.current_plot = create_seaborn_surface(df1, df2)
+                    state.status_msg = "UNIT MISMATCH DETECTED."
+                else:
+                    # Compatible or no units
+                    state.current_plot = create_seaborn_surface(df1, df2)
+                    state.status_msg = "COMPARATIVE ANALYSIS MODE"
+                    
+                # Update Text Panel
+                state.current_analysis = {
+                    "summary": f"COMPARING:\n1. {raw1[2]}\n2. {raw2[2]}\n\nSee graphs for delta analysis.",
+                    "anomalies": []
+                }
+
+    except Exception as e:
+        state.status_msg = f"FAILED TO LOAD DATA: {e}"
     finally:
         state.is_processing = False
 
@@ -197,6 +235,19 @@ while running:
         # --- GLOBAL MOUSE CLICKS ---
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             
+            # HANDLE CONVERSION DIALOG FIRST
+            if state.show_conversion_dialog:
+                if btn_conv_yes.check_hover(mouse_pos):
+                    # Trigger conversion
+                    file_path, col, unit = state.pending_conversion
+                    threading.Thread(target=perform_conversion_worker, 
+                                     args=(file_path, col, unit, state.selected_ids), 
+                                     daemon=True).start()
+                elif btn_conv_no.check_hover(mouse_pos):
+                    state.show_conversion_dialog = False
+                    state.status_msg = "CONVERSION CANCELLED. DISPLAYING RAW."
+                continue # Block other clicks
+
             # 1. SPLASH SCREEN EVENTS
             if current_state == STATE_SPLASH:
                 if not show_login_box:
@@ -249,23 +300,23 @@ while running:
 
             # 3. DASHBOARD EVENTS
             elif current_state == STATE_DASHBOARD:
-                if state.selected_id and btn_add_manual.check_hover(mouse_pos):
+                if len(state.selected_ids) == 1 and btn_add_manual.check_hover(mouse_pos):
                     path = filedialog.askopenfilename(filetypes=[("CSV", "*.csv")])
-                    if path: threading.Thread(target=process_new_file_worker, args=(path, state.selected_id, state.active_branch), daemon=True).start()
+                    # Pass the single selected ID as parent
+                    if path: threading.Thread(target=process_new_file_worker, args=(path, state.selected_ids[0], state.active_branch), daemon=True).start()
                 
-                elif state.selected_id and btn_edit_meta.check_hover(mouse_pos):
+                elif len(state.selected_ids) == 1 and btn_edit_meta.check_hover(mouse_pos):
                     is_editing_metadata = not is_editing_metadata
                 
                 elif is_editing_metadata and btn_save_meta.check_hover(mouse_pos):
-                    db.update_metadata(state.selected_id, meta_input_notes, meta_input_temp, meta_input_sid)
+                    db.update_metadata(state.selected_ids[0], meta_input_notes, meta_input_temp, meta_input_sid)
                     is_editing_metadata = False
-                    threading.Thread(target=load_experiment_worker, args=(state.selected_id,), daemon=True).start()
+                    threading.Thread(target=load_experiment_worker, args=(state.selected_ids,), daemon=True).start()
                 
                 elif btn_snapshot_export.check_hover(mouse_pos):
                     threading.Thread(target=export_project_worker, args=(selected_project_path,), daemon=True).start()
 
                 elif btn_branch.check_hover(mouse_pos):
-                    # Ask for new branch name
                     new_branch = simpledialog.askstring("New Branch", "Enter new branch name:")
                     if new_branch:
                         state.active_branch = new_branch
@@ -275,7 +326,6 @@ while running:
                     if state.current_analysis:
                         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
                         if path:
-                            # Ensure processor.py is present and working
                             try:
                                 export_to_report(path, state.current_analysis, state.active_branch)
                                 state.status_msg = "REPORT GENERATED SUCCESSFULLY."
@@ -286,10 +336,10 @@ while running:
 
                 else:
                     # Tree Interaction
-                    cid = tree_ui.handle_click(event.pos, (20, 80, 800, 600))
-                    if cid:
-                        state.selected_id = cid
-                        threading.Thread(target=load_experiment_worker, args=(cid,), daemon=True).start()
+                    selected_list = tree_ui.handle_click(event.pos, (20, 80, 800, 600))
+                    if selected_list:
+                        # Load whatever is in the list (1 or 2 items)
+                        threading.Thread(target=load_experiment_worker, args=(selected_list,), daemon=True).start()
 
         # Keyboard Routing
         if event.type == pygame.KEYDOWN:
@@ -389,10 +439,10 @@ while running:
         screen.blit(tree_surf, (20, 80))
         UITheme.draw_bracket(screen, (20, 80, 800, 600), UITheme.ACCENT_ORANGE)
 
-        # Context Icons
-        if state.selected_id:
+        # Context Icons - Only show if ONE node selected
+        if len(state.selected_ids) == 1:
             for node in tree_ui.nodes:
-                if node["id"] == state.selected_id:
+                if node["id"] == state.selected_ids[0]:
                     pos = (node["pos"] * tree_ui.zoom_level) + tree_ui.camera_offset
                     mx, my = pos.x + 45, pos.y + 60
                     # Update buttons position
@@ -419,9 +469,10 @@ while running:
                 UITheme.render_terminal_text(screen, state.current_analysis.get('summary', ""), (855, 420), font_main, UITheme.TEXT_OFF_WHITE, 390)
                 
                 # Show Metadata if exists
-                meta_txt = f"NOTE: {meta_input_notes}\nTEMP: {meta_input_temp} | ID: {meta_input_sid}"
-                if meta_input_notes or meta_input_temp:
-                    UITheme.render_terminal_text(screen, meta_txt, (855, 550), font_main, UITheme.ACCENT_ORANGE, 390)
+                if len(state.selected_ids) == 1:
+                    meta_txt = f"NOTE: {meta_input_notes}\nTEMP: {meta_input_temp} | ID: {meta_input_sid}"
+                    if meta_input_notes or meta_input_temp:
+                        UITheme.render_terminal_text(screen, meta_txt, (855, 550), font_main, UITheme.ACCENT_ORANGE, 390)
         else:
             # --- EDIT MODE: SHOW INPUT BOXES ---
             screen.blit(font_bold.render("MANUAL DATA ENTRY", True, UITheme.ACCENT_ORANGE), (855, 100))
@@ -453,6 +504,30 @@ while running:
         btn_snapshot_export.draw(screen, font_main)
         
         if state.is_processing: draw_loading_overlay(screen, font_bold)
+
+        # --- CONVERSION DIALOG OVERLAY ---
+        if state.show_conversion_dialog:
+            overlay = pygame.Surface((1280, 720), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 220))
+            screen.blit(overlay, (0,0))
+            
+            d_rect = pygame.Rect(440, 260, 400, 200)
+            pygame.draw.rect(screen, UITheme.PANEL_GREY, d_rect)
+            UITheme.draw_bracket(screen, d_rect, UITheme.ACCENT_ORANGE)
+            
+            msg1 = font_bold.render("UNIT MISMATCH DETECTED", True, UITheme.ACCENT_ORANGE)
+            msg2 = font_main.render(f"Convert Secondary Node to {state.pending_conversion[2]}?", True, UITheme.TEXT_OFF_WHITE)
+            msg3 = font_main.render("This updates the CSV file permanently.", True, UITheme.TEXT_DIM)
+            
+            screen.blit(msg1, (d_rect.centerx - msg1.get_width()//2, 280))
+            screen.blit(msg2, (d_rect.centerx - msg2.get_width()//2, 320))
+            screen.blit(msg3, (d_rect.centerx - msg3.get_width()//2, 350))
+            
+            btn_conv_yes.check_hover(mouse_pos)
+            btn_conv_yes.draw(screen, font_bold)
+            
+            btn_conv_no.check_hover(mouse_pos)
+            btn_conv_no.draw(screen, font_bold)
 
     pygame.display.flip()
     clock.tick(60)

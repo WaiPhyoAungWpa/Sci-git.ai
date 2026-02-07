@@ -1,6 +1,7 @@
 class AppState:
     def __init__(self):
-        self.selected_id = None
+        # CHANGED: Support multiple selections
+        self.selected_ids = [] 
         self.head_id = None
         self.active_branch = "main"
         
@@ -8,7 +9,11 @@ class AppState:
         self.current_analysis = None
         
         self.is_processing = False
-        self.needs_tree_update = False # NEW: Flag to refresh UI safely
+        self.needs_tree_update = False 
         self.status_msg = "SYSTEM READY"
+
+        # NEW: For Unit Conversion Dialog
+        self.show_conversion_dialog = False
+        self.pending_conversion = None # Stores (file_path, column, to_unit)
 
 state = AppState()
