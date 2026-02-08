@@ -2,6 +2,7 @@
 import pygame
 import os
 import sys
+import shutil
 import pandas as pd
 import tkinter as tk
 from tkinter import filedialog, simpledialog
@@ -17,6 +18,7 @@ from core.watcher import start_watcher
 from engine.ai import ScienceAI
 from core.processor import export_to_report
 from core.workers import TaskQueue, WorkerController
+from core.hashing import save_to_vault, get_file_hash
 
 # --- INIT ---
 pygame.init()
@@ -61,6 +63,19 @@ def save_editor_changes():
     except Exception as e:
         state.status_msg = f"SAVE FAILED: {e}"
 
+def perform_undo():
+    if not state.selected_ids: return
+    node_id = state.selected_ids[0]
+    history = db.get_node_history(node_id)
+    if len(history) > 1:
+        # Get previous hash (we are at the last index)
+        prev_hash = history[-2] 
+        vault_file = os.path.join(state.selected_project_path, ".sci_vault", f"{prev_hash}.csv")
+        # Overwrite current working file
+        shutil.copy2(vault_file, state.editor_file_path)
+        state.status_msg = f"UNDO: RESTORED VERSION {prev_hash[:8]}"
+        task_manager.add_task(worker_ctrl.worker_load_experiment, [state.selected_ids])
+
 # ==============================================================================
 # GAME LOOP
 # ==============================================================================
@@ -98,6 +113,12 @@ while running:
                     state.editor_input_buffer += event.unicode
             elif event.key == pygame.K_DOWN: state.editor_scroll_y = max(0, state.editor_scroll_y - 1)
             elif event.key == pygame.K_UP: state.editor_scroll_y += 1
+        if event.type == pygame.KEYDOWN:
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LCTRL] and event.key == pygame.K_z and current_state == STATE_DASHBOARD:
+                perform_undo()
+            elif keys[pygame.K_RCTRL] and event.key == pygame.K_z and current_state == STATE_DASHBOARD:
+                perform_undo()
 
         # --- MOUSE INPUT ---
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:

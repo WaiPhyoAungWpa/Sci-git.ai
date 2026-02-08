@@ -38,4 +38,7 @@ class UILayout:
         self.btn_editor_save = Button(1050, 650, 200, 40, "SAVE CHANGES", (0, 180, 100))
         self.btn_editor_exit = Button(20, 650, 150, 40, "CANCEL", (200, 50, 50))
 
+        self.btn_undo = Button(300, 10, 80, 25, "UNDO [^Z]", (60, 60, 70))
+        self.btn_redo = Button(390, 10, 80, 25, "REDO [^Y]", (60, 60, 70))
+
 layout = UILayout()

@@ -126,7 +126,7 @@ class RenderEngine:
     def draw_dashboard(self, mouse_pos, tree_ui, ai_engine):
         self.screen.fill(UITheme.BG_DARK)
         UITheme.draw_grid(self.screen)
-        
+                
         # HEADER
         pygame.draw.rect(self.screen, UITheme.PANEL_GREY, (0, 0, 1280, 70))
         pygame.draw.line(self.screen, UITheme.ACCENT_ORANGE, (0, 70), (1280, 70), 2)
@@ -135,7 +135,7 @@ class RenderEngine:
         self.screen.blit(self.font_bold.render(header_txt, True, UITheme.ACCENT_ORANGE), (20, 10))
         
         # MENU BAR
-        for b in [layout.btn_menu_file, layout.btn_menu_edit, layout.btn_menu_analyze]:
+        for b in [layout.btn_menu_file, layout.btn_menu_edit, layout.btn_menu_analyze, layout.btn_undo, layout.btn_redo]:
             b.check_hover(mouse_pos)
             b.draw(self.screen, self.font_small)
 

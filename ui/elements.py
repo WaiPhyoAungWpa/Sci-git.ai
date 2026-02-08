@@ -93,6 +93,20 @@ class VersionTree:
             if parent_id in pos_map:
                 self.connections.append((pos_map[parent_id]['pos'], final_pos))
 
+    def draw_arrow(self, surface, start, end, color):
+        """Draws a directional arrow head on a line."""
+        # Calculate vector and angle
+        vec = end - start
+        if vec.length() == 0: return
+        angle = vec.angle_to(pygame.Vector2(0, 1))
+        
+        # Create triangle points
+        size = 8 * self.zoom_level
+        p1 = end
+        p2 = end + pygame.Vector2(-size/2, -size).rotate(-angle)
+        p3 = end + pygame.Vector2(size/2, -size).rotate(-angle)
+        pygame.draw.polygon(surface, color, [p1, p2, p3])
+
     def draw(self, surface, mouse_pos):
         surface.fill((0, 0, 0, 0))
         current_radius = int(self.node_radius * self.zoom_level)
@@ -126,6 +140,7 @@ class VersionTree:
             mid_x = int(s.x + (e.x - s.x) // 2)
             pts = [(int(s.x), int(s.y)), (mid_x, int(s.y)), (mid_x, int(e.y)), (int(e.x), int(e.y))]
             pygame.draw.lines(surface, (70, 70, 80), False, pts, 2)
+            self.draw_arrow(surface, pygame.Vector2(mid_x, e.y), e, (100, 100, 110))
 
         # 3. Draw Nodes
         font_height = self.font.get_linesize()
@@ -216,6 +231,11 @@ class VersionTree:
             if node["branch"] != "main": col = UITheme.NODE_BRANCH
             
             pygame.draw.circle(surface, col, (mx, my), 2)
+            
+            if not self.minimap_rect.collidepoint(mx, my):
+                edge_x = max(self.minimap_rect.left + 5, min(mx, self.minimap_rect.right - 5))
+                edge_y = max(self.minimap_rect.top + 5, min(my, self.minimap_rect.bottom - 5))
+                pygame.draw.circle(surface, UITheme.ACCENT_ORANGE, (edge_x, edge_y), 2)
 
         # 5. Draw Viewport (Camera)
         # The camera offset is negative relative to world 0,0 usually.

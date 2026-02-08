@@ -11,6 +11,7 @@ class DBHandler:
         self.create_tables()
 
     def create_tables(self):
+        self.conn.execute("CREATE TABLE IF NOT EXISTS node_history (node_id INTEGER, file_hash TEXT, timestamp DATETIME)")
         query = """
         CREATE TABLE IF NOT EXISTS experiments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,3 +124,20 @@ class DBHandler:
                 self.conn.close()
         except sqlite3.Error:
             pass
+
+    def add_hash_to_history(self, node_id, file_hash):
+        with self.lock:
+            # Avoid duplicate consecutive hashes
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT file_hash FROM node_history WHERE node_id = ? ORDER BY rowid DESC LIMIT 1", (node_id,))
+            last = cursor.fetchone()
+            if not last or last[0] != file_hash:
+                cursor.execute("INSERT INTO node_history (node_id, file_hash, timestamp) VALUES (?, ?, ?)", 
+                               (node_id, file_hash, datetime.now()))
+                self.conn.commit()
+
+    def get_node_history(self, node_id):
+        with self.lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT file_hash FROM node_history WHERE node_id = ? ORDER BY rowid ASC", (node_id,))
+            return [r[0] for r in cursor.fetchall()]

@@ -39,5 +39,42 @@ def draw_metadata_panel(surface, experiment_data):
     notes = experiment_data.get('notes', 'No notes added...')
     temp = experiment_data.get('temperature', 'N/A')
     sid = experiment_data.get('sample_id', 'Unknown')
-    
-    # Rendering logic using your UITheme.render_terminal_text
+
+class TextInput:
+    def __init__(self, x, y, w, h, label="", secret=False):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.label = label
+        self.text = ""
+        self.active = False
+        self.secret = secret
+        self.font = pygame.font.SysFont("Consolas", 16)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.active = self.rect.collidepoint(event.pos)
+        
+        if self.active and event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                self.text = self.text[:-1]
+            elif event.key == pygame.K_RETURN:
+                self.active = False
+            else:
+                if event.unicode.isprintable():
+                    self.text += event.unicode
+
+    def draw(self, surface):
+        color = UITheme.ACCENT_ORANGE if self.active else (100, 100, 110)
+        pygame.draw.rect(surface, (10, 10, 15), self.rect)
+        pygame.draw.rect(surface, color, self.rect, 1)
+        
+        # Label
+        lbl = self.font.render(self.label, True, UITheme.TEXT_DIM)
+        surface.blit(lbl, (self.rect.x, self.rect.y - 20))
+        
+        # Text
+        display_text = "*" * len(self.text) if self.secret else self.text
+        if self.active and pygame.time.get_ticks() % 1000 < 500:
+            display_text += "|"
+            
+        txt_surf = self.font.render(display_text, True, (255, 255, 255))
+        surface.blit(txt_surf, (self.rect.x + 10, self.rect.y + (self.rect.h - txt_surf.get_height())//2))
