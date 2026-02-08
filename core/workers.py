@@ -328,8 +328,7 @@ class TaskQueue:
                 state.show_conversion_dialog = True
 
             elif msg_type == "ANALYSIS_READY":
-                # --- NEW: Trigger Popup instead of silent update ---
-                state.current_analysis = data
+                # --- FIXED: Only update popup data, do NOT overwrite sidebar state ---
                 state.ai_popup_data = data
                 state.show_ai_popup = True
                 state.status_msg = "ANALYSIS COMPLETE"

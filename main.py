@@ -229,7 +229,7 @@ while running:
                     state.search_active = False
 
                 if state.show_ai_popup:
-                    # --- NEW: AI POPUP INTERACTIONS ---
+                    # --- AI POPUP INTERACTIONS ---
                     if layout.btn_popup_close.check_hover(mouse_pos):
                         state.show_ai_popup = False
                     elif layout.btn_popup_download.check_hover(mouse_pos):
@@ -243,8 +243,15 @@ while running:
                                     state.status_msg = f"ERROR: {e}"
                 
                 elif state.show_axis_selector:
-                    if not axis_selector_rect.collidepoint(mouse_pos) and not layout.btn_axis_gear.check_hover(mouse_pos):
+                    # --- FIXED: Allow closing the selector via the gear button ---
+                    if layout.btn_axis_gear.check_hover(mouse_pos):
                         state.show_axis_selector = False
+                    
+                    # Close if clicking outside
+                    elif not axis_selector_rect.collidepoint(mouse_pos):
+                        state.show_axis_selector = False
+                    
+                    # Handle Column Clicks
                     elif axis_selector_rect.collidepoint(mouse_pos) and state.plot_context:
                         df_ref = state.plot_context['df']
                         numeric_cols = df_ref.select_dtypes(include=['number']).columns
@@ -300,6 +307,7 @@ while running:
                     if layout.btn_redo.check_hover(mouse_pos):
                         perform_redo()
 
+                    # Toggle Axis Selector
                     if layout.btn_axis_gear.check_hover(mouse_pos): 
                         state.show_axis_selector = not state.show_axis_selector
                     

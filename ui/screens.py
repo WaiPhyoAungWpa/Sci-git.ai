@@ -29,8 +29,13 @@ class RenderEngine:
         # Load UI Icons (Collapse/Expand/Settings)
         def load_icon(path, size):
             if os.path.exists(path):
-                img = pygame.image.load(path).convert_alpha()
-                return pygame.transform.smoothscale(img, size)
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    return pygame.transform.smoothscale(img, size)
+                except Exception as e:
+                    print(f"Failed to load icon {path}: {e}")
+            else:
+                print(f"Icon missing: {path}")
             return None
 
         self.icons['collapse'] = load_icon("image/collapse.webp", (20, 20))
