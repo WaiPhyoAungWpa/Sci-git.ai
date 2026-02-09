@@ -255,7 +255,12 @@ while running:
                             path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")])
                             if path:
                                 try:
-                                    export_to_report(path, state.ai_popup_data, "AI_SUMMARY_EXPORT")
+                                    temp_img = "temp_plot_export.png"
+                                    if state.current_plot:
+                                        pygame.image.save(state.current_plot, temp_img)
+                                    export_to_report(path, state.ai_popup_data, "AI_SUMMARY_EXPORT", temp_img if os.path.exists(temp_img) else None)
+                                    if os.path.exists(temp_img):
+                                        os.remove(temp_img)
                                     state.status_msg = "PDF SAVED."
                                 except Exception as e:
                                     state.status_msg = f"ERROR: {e}"
@@ -453,6 +458,10 @@ while running:
         
         # --- VIEWPORT NAVIGATION ---
         if current_state == STATE_DASHBOARD:
+                # --- AI POPUP SCROLL ---
+            if event.type == pygame.MOUSEWHEEL and state.show_ai_popup:
+                state.ai_popup_scroll_y = max(0, state.ai_popup_scroll_y - event.y * 30)
+                continue  # prevent zoom / panel scroll underneath
             if event.type == pygame.MOUSEWHEEL: 
                 if mouse_pos[0] > 840: # Over right panel
                     state.analysis_scroll_y = max(0, state.analysis_scroll_y - event.y * 20)
