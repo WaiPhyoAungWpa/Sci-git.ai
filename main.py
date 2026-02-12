@@ -263,6 +263,16 @@ while running:
                     if action == "CLEAR_CACHE":
                         clear_pycache()
                         state.status_msg = "CACHE CLEARED."
+                    elif action == "THEME_CHANGED":
+                        # Force re-render current plot with new theme
+                        if state.selected_ids and worker_ctrl:
+                            # Try to preserve current axis selection if available
+                            x = state.plot_context.get("x_col") if state.plot_context else None
+                            y = state.plot_context.get("y_col") if state.plot_context else None
+
+                            state.processing_mode = "LOCAL"
+                            task_manager.add_task(worker_ctrl.worker_load_experiment, [state.selected_ids, x, y, True])
+                            state.status_msg = "THEME APPLIED."
                     continue # Block other clicks
 
                 if search_bar_hitbox.collidepoint(mouse_pos):

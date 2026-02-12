@@ -156,9 +156,11 @@ class SettingsMenu:
         if self.btn_theme_light.check_hover(mouse_pos):
             cfg.set_theme("LIGHT")
             theme.update_theme()
+            return "THEME_CHANGED"
         elif self.btn_theme_dark.check_hover(mouse_pos):
             cfg.set_theme("DARK")
             theme.update_theme()
+            return "THEME_CHANGED"
         elif self.btn_clear_cache.check_hover(mouse_pos):
             return "CLEAR_CACHE"
         elif self.btn_close.check_hover(mouse_pos):

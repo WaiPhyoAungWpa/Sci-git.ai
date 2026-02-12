@@ -151,6 +151,11 @@ class VersionTree:
 
             # Search Match Logic
             is_match = self.search_filter.lower() in node["name"].lower() if self.search_filter else False
+            
+            # Search highlight color (yellow family, readable in both themes)
+            is_light = UITheme.BG_DARK[0] > 150
+            search_color = (255, 255, 0) if not is_light else (180, 140, 0)
+            
             if is_match and state.status_msg != "MATCH FOUND":
                 state.status_msg = "MATCH FOUND"
 
@@ -163,9 +168,18 @@ class VersionTree:
                 hl_color = UITheme.ACCENT_ORANGE if idx == 0 else (0, 255, 255)
                 pygame.draw.circle(surface, hl_color, (ix, iy), current_radius + 4, 3)
             
-            # Search Glow
+            # Search Highlight (theme-aware + contrast-safe)
             if is_match and self.search_filter:
-                pygame.draw.circle(surface, (255, 255, 0), (ix, iy), current_radius + 8, 2)
+
+                # Yellow variants: bright for dark mode, mustard for light mode (more contrast)
+                search_color = (255, 255, 0) if not is_light else (180, 140, 0)
+
+                # Outer ring
+                pygame.draw.circle(surface, search_color, (ix, iy), current_radius + 8, 3)
+
+            # Search Glow
+            # if is_match and self.search_filter:
+                # pygame.draw.circle(surface, (255, 255, 0), (ix, iy), current_radius + 8, 2)
 
             # Node Body
             pygame.draw.circle(surface, UITheme.PANEL_GREY, (ix, iy), current_radius)
@@ -177,7 +191,7 @@ class VersionTree:
                 surface.blit(id_txt, id_txt.get_rect(center=(ix, iy)))
                 
                 name_trunc = node["name"][:15] + ".." if len(node["name"]) > 15 else node["name"]
-                name_col = (255, 255, 0) if is_match else UITheme.TEXT_DIM
+                name_col = search_color if is_match else UITheme.TEXT_DIM
                 name_txt = self.font.render(name_trunc, True, name_col)
                 surface.blit(name_txt, (ix - 30, iy + current_radius + 5))
 

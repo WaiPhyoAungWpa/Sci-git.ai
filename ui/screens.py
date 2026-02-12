@@ -349,19 +349,27 @@ class RenderEngine:
             layout.dd_ai_analyze.check_hover(mouse_pos)
             layout.dd_ai_analyze.draw(self.screen, self.font_small)
 
-        # SEARCH BAR
+        # SEARCH BAR (theme-aware)
         search_rect = pygame.Rect(850, 45, 200, 20)
-        pygame.draw.rect(self.screen, (10, 10, 15), search_rect)
-        pygame.draw.rect(self.screen, (UITheme.ACCENT_ORANGE if state.search_active else (50, 50, 60)), search_rect, 1)
+        # If LIGHT theme, use a light input bg. If DARK, use darker input bg.
+        is_light = UITheme.BG_DARK[0] > 150  # crude but works with your theme palette
+        input_bg = UITheme.PANEL_GREY if is_light else UITheme.BG_DARK
+        pygame.draw.rect(self.screen, input_bg, search_rect)
+        border_col = UITheme.ACCENT_ORANGE if state.search_active else UITheme.TEXT_DIM
+        pygame.draw.rect(self.screen, border_col, search_rect, 1)
         self.screen.blit(self.font_small.render("SEARCH:", True, UITheme.TEXT_DIM), (800, 48))
-        
+
         display_text = state.search_text
-        if state.search_active and (pygame.time.get_ticks() % 1000) > 500: display_text += "_"
-        text_surf = self.font_small.render(display_text, True, (255, 255, 255))
+        if state.search_active and (pygame.time.get_ticks() % 1000) > 500:
+            display_text += "_"
+
+        text_surf = self.font_small.render(display_text, True, UITheme.TEXT_OFF_WHITE)
         if text_surf.get_width() > 190:
-            display_text = "..." + state.search_text[-20:] 
-            if state.search_active and (pygame.time.get_ticks() % 1000) > 500: display_text += "_"
-            text_surf = self.font_small.render(display_text, True, (255, 255, 255))
+            display_text = "..." + state.search_text[-20:]
+            if state.search_active and (pygame.time.get_ticks() % 1000) > 500:
+                display_text += "_"
+            text_surf = self.font_small.render(display_text, True, UITheme.TEXT_OFF_WHITE)
+
         self.screen.blit(text_surf, (855, 48))
 
         # AI STATUS

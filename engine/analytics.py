@@ -5,6 +5,15 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 import seaborn as sns
 import pandas as pd
 import re
+from settings import UITheme
+
+def mpl_color(c):
+    """Convert 0–255 RGB(A) tuples to 0–1 floats. Leave hex/strings unchanged."""
+    if isinstance(c, (tuple, list)) and len(c) in (3, 4):
+        if any(x > 1 for x in c):
+            return tuple(float(x) / 255.0 for x in c)
+        return tuple(float(x) for x in c)
+    return c
 
 # --- HEADER SCANNER ---
 class HeaderScanner:
@@ -34,7 +43,7 @@ def create_seaborn_surface(df1, df2=None, width=400, height=300, x_col=None, y_c
     Generates a Seaborn plot as RAW BYTES (Thread-safe).
     Returns: (raw_buffer, size_tuple, context_dict)
     """
-    fig = Figure(figsize=(width/80, height/80), dpi=80, facecolor='#16161a')
+    fig = Figure(figsize=(width/80, height/80), dpi=80, facecolor=mpl_color(UITheme.PANEL_GREY))
     try:
         # DPI=80 matches the previous sizing logic
         canvas = FigureCanvasAgg(fig)
@@ -52,7 +61,7 @@ def create_seaborn_surface(df1, df2=None, width=400, height=300, x_col=None, y_c
         if df2 is None:
             # --- SINGLE MODE ---
             ax = fig.add_subplot(111)
-            ax.set_facecolor('#0d0d0f')
+            ax.set_facecolor(mpl_color(UITheme.BG_DARK))
             
             # Auto-select columns
             numeric_cols = df1.select_dtypes(include=['number']).columns
@@ -64,7 +73,7 @@ def create_seaborn_surface(df1, df2=None, width=400, height=300, x_col=None, y_c
 
             if final_x and final_y:
                 sns.lineplot(data=df1, x=final_x, y=final_y, ax=ax, color=line_colors[0], linewidth=2)
-                ax.set_title(f"{final_x} vs {final_y}", color=line_colors[0], fontsize=10, family='monospace')
+                ax.set_title(f"{final_x} vs {final_y}", color=mpl_color(UITheme.ACCENT_ORANGE), fontsize=10, family='monospace')
             else:
                 ax.text(0.5, 0.5, "INSUFFICIENT DATA", color='gray', ha='center', va='center')
                 
@@ -85,7 +94,7 @@ def create_seaborn_surface(df1, df2=None, width=400, height=300, x_col=None, y_c
                 context["y_col"] = use_y
                 
                 ax = fig.add_subplot(111)
-                ax.set_facecolor('#0d0d0f')
+                ax.set_facecolor(mpl_color(UITheme.BG_DARK))
                 sns.lineplot(data=df1, x=use_x, y=use_y, ax=ax, color=line_colors[0], linewidth=2, label="Primary")
                 sns.lineplot(data=df2, x=use_x, y=use_y, ax=ax, color=line_colors[1], linewidth=2, label="Secondary")
                 ax.set_title("COMPARATIVE OVERLAY", color='#ffffff', fontsize=10, family='monospace')
@@ -107,9 +116,14 @@ def create_seaborn_surface(df1, df2=None, width=400, height=300, x_col=None, y_c
 
         # Styling
         for ax in fig.axes:
-            ax.tick_params(colors='#888888', labelsize=8)
+            ax.tick_params(colors=mpl_color(UITheme.TEXT_DIM), labelsize=8)
+            
+            ax.xaxis.label.set_color(mpl_color(UITheme.TEXT_OFF_WHITE))
+            ax.yaxis.label.set_color(mpl_color(UITheme.TEXT_OFF_WHITE))
+            
             for spine in ax.spines.values():
-                spine.set_edgecolor('#333333')
+                spine_col = UITheme.BORDER if hasattr(UITheme, "BORDER") else UITheme.TEXT_DIM
+                spine.set_edgecolor(mpl_color(spine_col))
 
         # RENDER TO BYTES (Crucial Step)
         canvas.draw()
