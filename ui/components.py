@@ -10,7 +10,12 @@ class Button:
 
     def draw(self, surface, font):
         draw_color = self.color if not self.is_hovered else (min(self.color[0]+40, 255), min(self.color[1]+40, 255), min(self.color[2]+40, 255))
-        pygame.draw.rect(surface, UITheme.PANEL_GREY, self.rect)
+        fill = getattr(self, "fill_color", UITheme.PANEL_GREY)
+        # Allow fill_color to be a dynamic UITheme key (e.g., "BG_DARK")
+        if isinstance(fill, str):
+            fill = getattr(UITheme, fill, UITheme.PANEL_GREY)
+
+        pygame.draw.rect(surface, fill, self.rect)
         pygame.draw.rect(surface, draw_color, self.rect, 2)
         
         txt_surf = font.render(self.text, True, UITheme.TEXT_OFF_WHITE)

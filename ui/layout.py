@@ -49,6 +49,14 @@ class UILayout:
         
         # AI Dropdown
         self.dd_ai_analyze = Button(160, 68, 140, 24, "ANALYZE PROJECT", UITheme.PANEL_GREY)
+        # Give menu/dropdowns a visible panel fill (especially in LIGHT mode)
+        for b in [
+            self.btn_menu_file, self.btn_menu_edit, self.btn_menu_ai,
+            self.dd_file_export,
+            self.dd_edit_undo, self.dd_edit_redo, self.dd_edit_file,
+            self.dd_ai_analyze
+        ]:
+            b.fill_color = "BG_DARK"
 
         # EDITOR
         self.btn_editor_save = Button(1050, 650, 200, 40, "SAVE CHANGES", (0, 180, 100))

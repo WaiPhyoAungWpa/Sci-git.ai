@@ -1,4 +1,5 @@
 # --- START OF FILE settings.py ---
+from matplotlib import lines
 import pygame
 from ui.styles import theme
 
@@ -11,7 +12,8 @@ class DynamicThemeMeta(type):
     # FIXED: Hardcoded to Blue so the logo always looks good on Splash Screen
     @property
     def BG_LOGIN(cls): return (0, 67, 153) 
-    
+    @property
+    def BG_DARK(cls): return theme.BG_DARK
     @property
     def PANEL_GREY(cls): return theme.BG_PANEL
     @property
@@ -50,19 +52,39 @@ class UITheme(metaclass=DynamicThemeMeta):
         current_line = []
 
         for word in words:
+            # If a single token is too wide, split it into chunks
+            if font.size(word)[0] > width_limit:
+                # flush current line first
+                if current_line:
+                    lines.append(" ".join(current_line))
+                    current_line = []
+
+                chunk = ""
+                for ch in word:
+                    test = chunk + ch
+                    if font.size(test)[0] > width_limit and chunk:
+                        lines.append(chunk)
+                        chunk = ch
+                    else:
+                        chunk = test
+                if chunk:
+                    lines.append(chunk)
+                continue
+
             current_line.append(word)
             test_line = " ".join(current_line)
             if font.size(test_line)[0] > width_limit:
                 current_line.pop()
                 lines.append(" ".join(current_line))
                 current_line = [word]
-        lines.append(" ".join(current_line))
+        if current_line:
+            lines.append(" ".join(current_line))
 
         y_offset = 0
         for line in lines:
             text_surf = font.render(line, True, color)
             surface.blit(text_surf, (pos[0], pos[1] + y_offset))
-            y_offset += font.get_linesize()
+            y_offset += font.get_linesize() + 2
         return y_offset
     
     @staticmethod

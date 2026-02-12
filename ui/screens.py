@@ -169,11 +169,14 @@ class RenderEngine:
         """Draws the AI Analysis Result Popup."""
         # Dim background
         overlay = pygame.Surface((1280, 720), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
+        if UITheme.BG_DARK[0] < 50:  # Dark Mode
+            overlay.fill((0, 0, 0, 200))
+        else:  # Light Mode
+            overlay.fill((255, 255, 255, 120))
         self.screen.blit(overlay, (0,0))
         
         # Popup Box
-        w, h = 800, 500
+        w, h = 850, 560
         x, y = (1280 - w)//2, (720 - h)//2
         rect = pygame.Rect(x, y, w, h)
         
@@ -185,16 +188,19 @@ class RenderEngine:
         self.screen.blit(self.font_header.render("AI ANALYSIS REPORT", True, UITheme.TEXT_OFF_WHITE), (x + 20, y + 20))
         
         # Content area (scrollable style if you want later)
-        content_x = x + 30
-        content_y = y + 80
-        content_w = w - 60
-        content_h = h - 160  # leave space for buttons
+        content_x = x + 40
+        content_y = y + 95
+        content_w = w - 80
+        content_h = h - 190  # leave space for buttons
 
         content_rect = pygame.Rect(content_x, content_y, content_w, content_h)
-        pygame.draw.rect(self.screen, (20, 20, 25), content_rect, border_radius=6)
-        pygame.draw.rect(self.screen, (50, 50, 55), content_rect, 1, border_radius=6)
-
-        self.screen.set_clip(content_rect)
+        pygame.draw.rect(self.screen, UITheme.PANEL_GREY, content_rect, border_radius=6)
+        pygame.draw.rect(self.screen, UITheme.GRID_COLOR, content_rect, 1, border_radius=6)
+        pad = 14
+        inner_rect = content_rect.inflate(-pad*2, -pad*2)
+        text_x = inner_rect.x + 10
+        wrap_w = inner_rect.w - 20   # 10px left + 10px right padding
+        self.screen.set_clip(inner_rect)
 
         # --- SCROLL STATE ---
         if not hasattr(state, "ai_popup_scroll_y"):
@@ -203,39 +209,39 @@ class RenderEngine:
         scroll_y = state.ai_popup_scroll_y
 
         # Start cursor with scroll offset applied
-        y_cursor = content_y + 10 - scroll_y
-        content_start_y = content_y + 10  # for height calculation later
+        y_cursor = inner_rect.y - scroll_y
+        content_start_y = inner_rect.y
 
         data = state.ai_popup_data or {}
 
         # --- SUMMARY ---
         summary = data.get("summary", "No Data.")
-        self.screen.blit(self.font_bold.render("SUMMARY", True, UITheme.ACCENT_ORANGE), (content_x, y_cursor))
-        y_cursor += 28
+        self.screen.blit(self.font_bold.render("SUMMARY", True, UITheme.ACCENT_ORANGE), (inner_rect.x, y_cursor))
+        y_cursor += 34
         y_cursor += UITheme.render_terminal_text(
             self.screen,
             summary,
-            (content_x, y_cursor),
+            (text_x , y_cursor),
             self.font_main,
             UITheme.TEXT_OFF_WHITE,
-            content_w
+            wrap_w
         ) + 12
 
         # --- ANOMALIES ---
         anomalies = data.get("anomalies", []) or []
         if anomalies:
-            self.screen.blit(self.font_bold.render("DETECTED ANOMALIES", True, (255, 60, 60)), (content_x, y_cursor))
-            y_cursor += 28
+            self.screen.blit(self.font_bold.render("DETECTED ANOMALIES", True, UITheme.ACCENT_ORANGE), (inner_rect.x, y_cursor))
+            y_cursor += 34
 
             for idx, item in enumerate(anomalies, start=1):
                 line = f"{idx}. {item}"
                 y_cursor += UITheme.render_terminal_text(
                     self.screen,
                     line,
-                    (content_x, y_cursor),
+                    (text_x, y_cursor),
                     self.font_main,
                     (255, 120, 120),
-                    content_w
+                    wrap_w
                 ) + 6
 
             y_cursor += 8
@@ -243,15 +249,15 @@ class RenderEngine:
         # --- NEXT STEPS ---
         next_steps = data.get("next_steps", "")
         if next_steps:
-            self.screen.blit(self.font_bold.render("NEXT STEPS", True, (120, 200, 255)), (content_x, y_cursor))
-            y_cursor += 28
+            self.screen.blit(self.font_bold.render("NEXT STEPS", True, UITheme.ACCENT_ORANGE), (inner_rect.x, y_cursor))
+            y_cursor += 34
             y_cursor += UITheme.render_terminal_text(
                 self.screen,
                 next_steps,
-                (content_x, y_cursor),
+                (text_x, y_cursor),
                 self.font_main,
                 UITheme.TEXT_OFF_WHITE,
-                content_w
+                wrap_w
             ) + 10
 
         # --- CLAMP SCROLL ---
@@ -259,7 +265,7 @@ class RenderEngine:
         content_end_y_no_scroll = y_cursor + scroll_y
         total_content_h = content_end_y_no_scroll - content_start_y
 
-        max_scroll = max(0, int(total_content_h - content_h + 20))  # +20 padding
+        max_scroll = max(0, int(total_content_h - inner_rect.h + 20))
         state.ai_popup_scroll_y = max(0, min(state.ai_popup_scroll_y, max_scroll))
 
         self.screen.set_clip(None)
@@ -327,8 +333,8 @@ class RenderEngine:
         
         # Helper to draw a dropdown box
         def draw_dropdown_bg(rect):
-            pygame.draw.rect(self.screen, (25, 25, 35), rect)
-            pygame.draw.rect(self.screen, (70, 70, 90), rect, 1)
+            pygame.draw.rect(self.screen, UITheme.BG_DARK, rect)
+            pygame.draw.rect(self.screen, UITheme.GRID_COLOR, rect, 1)
 
         # FILE DROPDOWN
         if state.show_file_dropdown:
