@@ -329,6 +329,10 @@ class RenderEngine:
             b.check_hover(mouse_pos)
             b.draw(self.screen, self.font_small)
 
+        # NEW: HOME button
+        layout.btn_home.check_hover(mouse_pos)
+        layout.btn_home.draw(self.screen, self.font_small)
+
         # --- DROPDOWNS ---
         
         # Helper to draw a dropdown box

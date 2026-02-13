@@ -29,6 +29,10 @@ class UILayout:
         self.btn_axis_gear = Button(1210, 100, 30, 30, "O", (80, 80, 90)) 
         self.btn_main_settings = Button(1230, 10, 30, 30, "*", (80, 80, 90))
 
+        # NEW: HOME / START OVER
+        self.btn_home = Button(1140, 42, 90, 26, "HOME", UITheme.PANEL_GREY)
+        self.btn_home.fill_color = "BG_DARK"
+        
         # ONBOARDING
         self.btn_skip_onboarding = Button(1150, 20, 100, 35, "SKIP >>", UITheme.TEXT_DIM)
         self.btn_onboard_upload = Button(SCREEN_CENTER_X - 150, 450, 300, 50, "UPLOAD FIRST EXPERIMENT", UITheme.ACCENT_ORANGE)

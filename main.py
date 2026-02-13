@@ -47,6 +47,7 @@ event_queue = Queue()
 task_manager = TaskQueue()
 render_engine = RenderEngine(screen)
 worker_ctrl = None 
+watcher = None
 
 # --- NEW: Menu Objects ---
 axis_selector = AxisSelector()
@@ -148,6 +149,94 @@ def open_editor_for_selected():
         state.status_msg = "EDITING MODE ACTIVE"
     except Exception:
         state.status_msg = "ERROR OPENING FILE"
+
+def reset_to_splash():
+    global current_state, watcher, db, worker_ctrl
+
+    # Stop watchdog observer for the current project
+    if watcher:
+        try:
+            watcher.stop()
+            watcher.join(timeout=1)
+        except:
+            pass
+        watcher = None
+
+    # Close DB
+    if db:
+        try:
+            db.close()
+        except:
+            pass
+        db = None
+        worker_ctrl = None
+
+    # Clear queues (avoid old NEW_FILE events firing after reset)
+    try:
+        while not event_queue.empty():
+            event_queue.get_nowait()
+    except:
+        pass
+
+    # Reset UI / app state
+    state.selected_ids = []
+    state.head_id = None
+    state.active_branch = "main"
+
+    state.current_plot = None
+    state.current_analysis = None
+    state.plot_context = None
+
+    state.show_axis_selector = False
+    state.is_processing = False
+    state.processing_mode = "NORMAL"
+    state.needs_tree_update = False
+    state.status_msg = "SYSTEM READY"
+
+    state.show_conversion_dialog = False
+    state.pending_conversion = None
+
+    state.show_ai_popup = False
+    state.ai_popup_data = None
+
+    state.show_ai_panel = False
+    state.is_editing_metadata = False
+
+    state.show_file_dropdown = False
+    state.show_edit_dropdown = False
+    state.show_ai_dropdown = False
+    state.show_settings = False
+
+    state.editor_df = None
+    state.editor_file_path = None
+    state.editor_scroll_y = 0
+    state.editor_selected_cell = None
+    state.editor_input_buffer = ""
+
+    state.search_text = ""
+    state.search_active = False
+    tree_ui.search_filter = ""
+
+    state.meta_input_notes = ""
+
+    # IMPORTANT: these two decide whether you see the 3 splash buttons again
+    state.researcher_name = ""
+    state.show_login_box = False
+    state.selected_project_path = ""
+
+    state.analysis_scroll_y = 0
+    state.stop_ai_requested = False
+    state.minimap_collapsed = False
+    state.redo_stack = {}
+
+    # Reset tree visuals
+    tree_ui.nodes = []
+    tree_ui.connections = []
+    tree_ui.camera_offset = pygame.Vector2(60, 300)
+    tree_ui.zoom_level = 1.0
+
+    current_state = STATE_SPLASH
+
 
 # ==============================================================================
 # GAME LOOP
@@ -257,6 +346,10 @@ while running:
                         state.editor_selected_cell = None
 
             elif current_state == STATE_DASHBOARD:
+                # --- HOME / START OVER ---
+                if layout.btn_home.check_hover(mouse_pos):
+                    reset_to_splash()
+                    continue
                 # --- SETTINGS OVERLAY ---
                 if state.show_settings:
                     action = settings_menu.handle_click(mouse_pos)
